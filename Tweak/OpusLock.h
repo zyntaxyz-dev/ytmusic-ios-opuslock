@@ -31,6 +31,6 @@ FOUNDATION_EXPORT BOOL OpusLockHookOn(NSString *key, BOOL dflt);
 /// Swizzle solo si el método está definido DIRECTO en cls (nunca hereda).
 /// Evita guardar nuestro propio IMP como "original" (recursión infinita).
 FOUNDATION_EXPORT BOOL OpusLockSwizzleDirect(Class cls, SEL sel,
-                                             IMP newIMP, IMP _Nullable *outOrig);
+                                             IMP newIMP, IMP _Nullable * _Nullable outOrig);
 
 NS_ASSUME_NONNULL_END
