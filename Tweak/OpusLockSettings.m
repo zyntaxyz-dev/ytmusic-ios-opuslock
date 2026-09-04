@@ -166,7 +166,7 @@ static void OpusLock_setAccountMenu(id self, SEL _cmd, id upper, id lower) {
             NSMethodSignature *sig =
                 [btnCls instanceMethodSignatureForSelector:initSel];
             NSInvocation *inv = [NSInvocation invocationWithMethodSignature:sig];
-            __unsafe_unretained id btnAlloc = [btnCls alloc]; // target es unsafe
+            id btnAlloc = [btnCls alloc]; // strong: mantiene vivo el target
             inv.target = btnAlloc;
             inv.selector = initSel;
             NSString *title = @"OpusLock";
@@ -177,8 +177,10 @@ static void OpusLock_setAccountMenu(id self, SEL _cmd, id upper, id lower) {
             [inv setArgument:&icon atIndex:4];
             [inv setArgument:&actionCopy atIndex:5];
             [inv invoke];
-            __unsafe_unretained id btn = nil;
-            [inv getReturnValue:&btn];
+            __unsafe_unretained id tmp = nil;
+            [inv getReturnValue:&tmp];
+            id btn = tmp;
+            btnAlloc = nil; // balancea: init consume el +1 de alloc, btn retiene el resultado
 
             NSMutableArray *newLower = [(NSArray *)lower mutableCopy];
             if (btn) [newLower addObject:btn];
