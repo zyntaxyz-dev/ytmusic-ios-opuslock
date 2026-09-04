@@ -14,3 +14,5 @@ Regla: añadir una fila por cada cambio vital. Nunca reescribir ni borrar filas.
 | 2026-09-04 | docs | docs | `README.md` + `docs/CHANGES.md` + `docs/TODO.md` iniciales | Lectura |
 | 2026-09-04 | feat | release | Primer release: repo público + tag `v1.0.0` + build CI verde (`OpusLock.dylib` arm64 ~97KB) | Artifact `OpusLock-dylib` run 33829983258 |
 | 2026-09-04 | fix-domain | ci | Fixes build: `theos-action` correcto, sin scheme `roothide`, `@end` huérfano y `[hz.integerValue]` | Runs 33829088752→33829983258 |
+| 2026-09-04 | feat | settings | Botón "OpusLock" en menú cuenta + pantalla ajustes (patrón YTMU, runtime dinámico, switch on/off, último stream) | Run verde 33831343671, dylib ~120KB |
+| 2026-09-04 | fix-domain | settings | Fix ARC `NSInvocation.target` (strong local + balance alloc/init) | Runs 33830855430→33831343671 |
