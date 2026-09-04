@@ -12,3 +12,5 @@ Regla: añadir una fila por cada cambio vital. Nunca reescribir ni borrar filas.
 | 2026-09-04 | feat | ci | `.github/workflows/build.yml` (macos-14 + setup-theos, artifact dylib) | Run Actions |
 | 2026-09-04 | feat | tooling | `scripts/inject.sh`, `scripts/dump_classes.sh`, `scripts/re/` (triage Mach-O Windows) | `shellcheck` + run triage |
 | 2026-09-04 | docs | docs | `README.md` + `docs/CHANGES.md` + `docs/TODO.md` iniciales | Lectura |
+| 2026-09-04 | feat | release | Primer release: repo público + tag `v1.0.0` + build CI verde (`OpusLock.dylib` arm64 ~97KB) | Artifact `OpusLock-dylib` run 33829983258 |
+| 2026-09-04 | fix-domain | ci | Fixes build: `theos-action` correcto, sin scheme `roothide`, `@end` huérfano y `[hz.integerValue]` | Runs 33829088752→33829983258 |
