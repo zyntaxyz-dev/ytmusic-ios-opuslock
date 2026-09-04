@@ -2,8 +2,6 @@ TARGET := iphone:clang:latest:16.0
 ARCHS = arm64
 FINALPACKAGE = 1
 
-THEOS_PACKAGE_SCHEME = roothide
-
 LIBRARY_NAME = OpusLock
 OpusLock_FILES = Tweak/OpusLock.m Tweak/OpusLockPolicy.m Tweak/OpusLockOverlay.m
 OpusLock_CFLAGS = -fobjc-arc -Os -Wall -Wno-deprecated-declarations -Werror=implicit-function-declaration
