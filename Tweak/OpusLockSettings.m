@@ -166,7 +166,8 @@ static void OpusLock_setAccountMenu(id self, SEL _cmd, id upper, id lower) {
             NSMethodSignature *sig =
                 [btnCls instanceMethodSignatureForSelector:initSel];
             NSInvocation *inv = [NSInvocation invocationWithMethodSignature:sig];
-            inv.target = [btnCls alloc];
+            __unsafe_unretained id btnAlloc = [btnCls alloc]; // target es unsafe
+            inv.target = btnAlloc;
             inv.selector = initSel;
             NSString *title = @"OpusLock";
             NSString *ident = @"opuslock";
