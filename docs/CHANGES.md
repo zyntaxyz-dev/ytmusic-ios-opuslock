@@ -16,3 +16,4 @@ Regla: añadir una fila por cada cambio vital. Nunca reescribir ni borrar filas.
 | 2026-09-04 | fix-domain | ci | Fixes build: `theos-action` correcto, sin scheme `roothide`, `@end` huérfano y `[hz.integerValue]` | Runs 33829088752→33829983258 |
 | 2026-09-04 | feat | settings | Botón "OpusLock" en menú cuenta + pantalla ajustes (patrón YTMU, runtime dinámico, switch on/off, último stream) | Run verde 33831343671, dylib ~120KB |
 | 2026-09-04 | fix-domain | settings | Fix ARC `NSInvocation.target` (strong local + balance alloc/init) | Runs 33830855430→33831343671 |
+| 2026-09-04 | fix-domain | pill | Pill no disparaba: YTM usa HAMPlayer/Cronet, no AVPlayer/NSURLSession. Reorder + pill ahora vía getter `streamingData` de `YTIPlayerResponse` (runtime discovery) + `allowAudioOnlyManualQualitySelection`=YES | Run verde 33832131335, dylib ~122KB |
