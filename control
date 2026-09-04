@@ -1,0 +1,9 @@
+Package: com.opuslock.ytmusic
+Name: OpusLock
+Version: 1.0.0
+Architecture: iphoneos-arm64
+Description: Force max audio quality (Opus 256k itag 774) + stream-info pill for YouTube Music iOS (jailed/sideload).
+Maintainer: OpusLock
+Author: OpusLock
+Section: Tweaks
+Depends: firmware (>= 16.0)

@@ -1,0 +1,6 @@
+# Entorno Python de ingeniería inversa (host Windows, solo triaje estático).
+# El build del dylib sigue siendo CI macOS + Theos.
+# Uso: python -m venv .venv-re; .\.venv-re\Scripts\Activate.ps1; pip install -r scripts/re/requirements-re.txt
+lief>=0.16
+macholib>=1.16.4
+capstone>=5.0

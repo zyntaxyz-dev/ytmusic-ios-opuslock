@@ -1,0 +1,37 @@
+name: build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Theos
+        uses: beer-psi/setup-theos@v1
+        with:
+          theos-src: https://github.com/theos/theos
+          theos-sdks: https://github.com/theos/sdks
+
+      - name: Build dylib
+        run: make clean package FINALPACKAGE=1
+
+      - name: Locate dylib
+        id: dylib
+        run: |
+          f="$(find . -name 'OpusLock.dylib' -not -path './theos/*' | head -n 1)"
+          [[ -n "$f" ]] || { echo "OpusLock.dylib no generado" >&2; exit 1; }
+          echo "path=$f" >> "$GITHUB_OUTPUT"
+          lipo -info "$f" || true
+
+      - name: Upload dylib
+        uses: actions/upload-artifact@v4
+        with:
+          name: OpusLock-dylib
+          path: ${{ steps.dylib.outputs.path }}
+          if-no-files-found: error

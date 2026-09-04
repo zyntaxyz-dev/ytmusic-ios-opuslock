@@ -1,0 +1,25 @@
+# Binarios / firmados — nunca commitear
+*.dylib
+*.deb
+*.ipa
+*.p12
+*.mobileprovision
+Payload/
+build/
+packages/
+theos/
+
+# Python RE
+.venv-re/
+__pycache__/
+*.pyc
+scripts/re/out/
+
+# App de referencia desencriptada (solo lectura local)
+com.google.ios.youtubemusic-9.35-Decrypted/
+
+# OS / editores
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
