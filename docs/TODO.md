@@ -13,3 +13,4 @@ Estados: `Pendiente|En proceso|Bloqueado|Hecho|Descartado`. Al completar: marcar
 | TODO-008 | Pendiente | Soporte protobuf `player` (hoy solo JSON; protobuf se deja intacto) | Sin regresión playback | `Tweak/OpusLock.m` §2 |
 | TODO-009 | Pendiente | Verificar botón "OpusLock" en menú cuenta + pantalla ajustes en 9.35.2 | Captura sección + switch on/off funcional | `Tweak/OpusLockSettings.m` |
 | TODO-010 | Pendiente | Verificar pill vía player-response en dispositivo (reproduce y confirma itag) | Captura pill + "Último stream" con itag | Run 33832131335 |
+| TODO-011 | En proceso | Diagnosticar con sección DIAGNÓSTICO: captura de `resp.*`, `sd.*`, `ham.*` tras reproducir | Captura DIAGNÓSTICO → decide hook definitivo | Run 33832699696 |
