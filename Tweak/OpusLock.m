@@ -20,6 +20,7 @@
 #import "OpusLockPolicy.h"
 #import "OpusLockOverlay.h"
 #import "OpusLockSettings.h"
+#import "OpusLockPlayerResponse.h"
 
 NSString * const OpusLockVersion = @"1.0.0";
 
@@ -313,6 +314,7 @@ static void OpusLockInit(void) {
                             "v@:@",
                             (void **)&gOrigReplace);
             OpusLockInstallAccountMenuHook(); // botón "OpusLock" en menú cuenta
+            OpusLockInstallPlayerResponseHook(); // reorder + pill vía YTIPlayerResponse
             OPUSLOCK_LOG(@"init v%@", OpusLockVersion);
         } @catch (__unused NSException *e) {
             // Jamás crashear el host.
