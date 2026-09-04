@@ -28,6 +28,9 @@ PATTERNS = [
     r"always.?high",
     r"HAMPlayer",
     r"NowPlaying",
+    r"YTMAccountButton",
+    r"YTMAvatarAccountView",
+    r"setAccountMenuUpperButtons",
 ]
 
 CHUNK = 8 * 1024 * 1024

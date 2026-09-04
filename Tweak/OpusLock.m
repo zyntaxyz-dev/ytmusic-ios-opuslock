@@ -19,6 +19,7 @@
 #import "OpusLock.h"
 #import "OpusLockPolicy.h"
 #import "OpusLockOverlay.h"
+#import "OpusLockSettings.h"
 
 NSString * const OpusLockVersion = @"1.0.0";
 
@@ -27,6 +28,83 @@ NSString * const OpusLockVersion = @"1.0.0";
 #else
 #define OPUSLOCK_LOG(...) do {} while (0)
 #endif
+
+// ---------------------------------------------------------------------------
+// Estado global (ver OpusLock.h). Lock simple: escrituras raras, lecturas UI.
+// ---------------------------------------------------------------------------
+
+static NSString * const kOpusLockEnabledKey = @"OpusLockEnabled";
+
+static NSLock *OpusLockStateLock(void) {
+    static NSLock *lock = nil;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        lock = [[NSLock alloc] init];
+    });
+    return lock;
+}
+
+static NSInteger gLastItag = -1;
+static NSDictionary *gLastInfo = nil;
+static BOOL gEnabledCached = NO;
+static BOOL gEnabledLoaded = NO;
+
+BOOL OpusLockIsEnabled(void) {
+    @try {
+        [OpusLockStateLock() lock];
+        if (!gEnabledLoaded) {
+            id v = [[NSUserDefaults standardUserDefaults] objectForKey:kOpusLockEnabledKey];
+            gEnabledCached = (v == nil) ? YES : [v boolValue];
+            gEnabledLoaded = YES;
+        }
+        BOOL e = gEnabledCached;
+        [OpusLockStateLock() unlock];
+        return e;
+    } @catch (__unused NSException *e) {
+        return YES;
+    }
+}
+
+void OpusLockSetEnabled(BOOL enabled) {
+    @try {
+        [OpusLockStateLock() lock];
+        gEnabledCached = enabled;
+        gEnabledLoaded = YES;
+        [OpusLockStateLock() unlock];
+        [[NSUserDefaults standardUserDefaults] setBool:enabled forKey:kOpusLockEnabledKey];
+    } @catch (__unused NSException *e) { }
+}
+
+NSInteger OpusLockLastItag(void) {
+    @try {
+        [OpusLockStateLock() lock];
+        NSInteger i = gLastItag;
+        [OpusLockStateLock() unlock];
+        return i;
+    } @catch (__unused NSException *e) {
+        return -1;
+    }
+}
+
+NSDictionary * _Nullable OpusLockLastInfo(void) {
+    @try {
+        [OpusLockStateLock() lock];
+        NSDictionary *info = gLastInfo;
+        [OpusLockStateLock() unlock];
+        return info;
+    } @catch (__unused NSException *e) {
+        return nil;
+    }
+}
+
+void OpusLockRecordPlayback(NSInteger itag, NSDictionary * _Nullable info) {
+    @try {
+        [OpusLockStateLock() lock];
+        gLastItag = itag;
+        gLastInfo = info;
+        [OpusLockStateLock() unlock];
+    } @catch (__unused NSException *e) { }
+}
 
 // ---------------------------------------------------------------------------
 // 1. Prefs best-effort
@@ -65,6 +143,7 @@ static void OpusLockForcePrefs(void) {
 
 static NSData * _Nullable OpusLockReorderedPlayerData(NSData *data) {
     @try {
+        if (!OpusLockIsEnabled()) return nil; // OFF: no tocar nada.
         if (!data || data.length == 0 || data.length > 8 * 1024 * 1024) return nil;
         NSError *err = nil;
         id json = [NSJSONSerialization JSONObjectWithData:data
@@ -142,6 +221,7 @@ static void OpusLockShowForPlayerItem(AVPlayerItem * _Nullable item) {
             return;
         }
         NSDictionary *info = [OpusLockPolicy infoForItag:itag];
+        OpusLockRecordPlayback(itag, info);
         // Si el accessLog trae bitrate medido, úsalo para el texto.
         NSString *measured = nil;
         @try {
@@ -232,6 +312,7 @@ static void OpusLockInit(void) {
                             (IMP)OpusLock_replaceCurrentItem,
                             "v@:@",
                             (void **)&gOrigReplace);
+            OpusLockInstallAccountMenuHook(); // botón "OpusLock" en menú cuenta
             OPUSLOCK_LOG(@"init v%@", OpusLockVersion);
         } @catch (__unused NSException *e) {
             // Jamás crashear el host.
