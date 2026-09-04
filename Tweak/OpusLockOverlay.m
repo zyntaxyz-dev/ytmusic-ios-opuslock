@@ -25,7 +25,7 @@
         ? [NSString stringWithFormat:@"%@k", kbps] : @"?k";
     NSNumber *hz = info[@"sampleRateHz"];
     NSString *sample = [hz isKindOfClass:[NSNumber class]]
-        ? ([hz.integerValue] >= 1000
+        ? (hz.integerValue >= 1000
            ? [NSString stringWithFormat:@"%gkHz", hz.doubleValue / 1000.0]
            : [NSString stringWithFormat:@"%@Hz", hz])
         : @"?Hz";
