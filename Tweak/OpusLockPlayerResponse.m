@@ -129,7 +129,10 @@ static NSArray * _Nullable OpusLockAdaptiveArray(id sd) {
 
 static void OpusLockReorderStreamingData(id sd) {
     @try {
-        if (!OpusLockIsEnabled()) return; // switch OFF: no tocar
+        if (!OpusLockIsEnabled()) return; // switch maestro OFF: no tocar
+        // Bisección freeze: mutar el array vivo es el sospechoso nº1.
+        // OFF por defecto en este ciclo; solo observa.
+        if (!OpusLockHookOn(@"hook.reorder", NO)) return;
         NSArray *arr = OpusLockAdaptiveArray(sd);
         if (!arr || arr.count < 2) return;
         OpusLockDiagCount(@"sd.arrays");
@@ -255,25 +258,21 @@ static void OpusLockForceBoolGetter(NSArray<NSString *> *classNames, NSString *s
             char ret[8] = {0};
             method_getReturnType(m, ret, sizeof(ret));
             if (ret[0] != 'B' && ret[0] != 'c' && ret[0] != 'C') continue;
-            const char *types = method_getTypeEncoding(m);
+            IMP o = NULL;
+            if (!OpusLockSwizzleDirect(cls, sel, (IMP)OpusLock_boolYes, &o)) continue;
             gBoolHooks[gBoolHookCount].cls = cls;
-            gBoolHooks[gBoolHookCount].orig = method_getImplementation(m);
+            gBoolHooks[gBoolHookCount].orig = o;
             gBoolHookCount++;
-            if (class_addMethod(cls, sel, (IMP)OpusLock_boolYes, types)) {
-                gBoolHooks[gBoolHookCount - 1].orig =
-                    method_getImplementation(class_getInstanceMethod(cls, sel));
-            } else {
-                method_setImplementation(m, (IMP)OpusLock_boolYes);
-            }
         }
     } @catch (__unused NSException *e) { }
 }
 
 // ---------------------------------------------------------------------------
-// Discovery HAM* (vía backup): inventario una sola vez para Diagnóstico.
+// Discovery HAM* (vía backup): lazy, fuera del constructor. Lo dispara la
+// pantalla de ajustes una sola vez (dispatch_once).
 // ---------------------------------------------------------------------------
 
-static void OpusLockDiscoverHAM(void) {
+void OpusLockDiscoverHAM(void) {
     static dispatch_once_t onceToken;
     dispatch_once(&onceToken, ^{
         @try {
@@ -325,6 +324,11 @@ static void OpusLockDiscoverHAM(void) {
 
 void OpusLockInstallPlayerResponseHook(void) {
     @try {
+        if (!OpusLockHookOn(@"hook.playerResponse", YES)) {
+            OpusLockDiagSet(@"resp.hook", @"off por ajuste");
+            OpusLockDiagSet(@"bool.hooks", @"off por ajuste");
+            return;
+        }
         Class resp = NSClassFromString(@"YTIPlayerResponse");
         OpusLockDiagSet(@"resp.class", resp != Nil ? @"SÍ hallada" : @"NO hallada");
         if (resp != Nil) {
@@ -335,19 +339,16 @@ void OpusLockInstallPlayerResponseHook(void) {
             OpusLockDiagSet(@"resp.getter",
                             getter != NULL ? NSStringFromSelector(getter) : @"NO hallado");
             if (getter != NULL) {
-                m = class_getInstanceMethod(resp, getter);
-                if (m) {
-                    gOrigSd = (OpusLockSdIMP)method_getImplementation(m);
-                    const char *types = method_getTypeEncoding(m);
-                    if (class_addMethod(resp, getter, (IMP)OpusLock_streamingData, types)) {
-                        gOrigSd = (OpusLockSdIMP)method_getImplementation(
-                            class_getInstanceMethod(resp, getter));
-                    } else {
-                        method_setImplementation(m, (IMP)OpusLock_streamingData);
-                    }
+                // Re-resuelve (por si el probe añadió el método) y swizzlea
+                // SOLO si vive directo en la clase: nunca herencias.
+                (void)class_getInstanceMethod(resp, getter);
+                IMP o = NULL;
+                if (OpusLockSwizzleDirect(resp, getter,
+                                          (IMP)OpusLock_streamingData, &o)) {
+                    gOrigSd = (OpusLockSdIMP)o;
                     OpusLockDiagSet(@"resp.hook", @"instalado");
                 } else {
-                    OpusLockDiagSet(@"resp.hook", @"sin método");
+                    OpusLockDiagSet(@"resp.hook", @"heredado: no tocado");
                 }
             } else {
                 OpusLockDiagSet(@"resp.hook", @"no instalado");
@@ -357,11 +358,14 @@ void OpusLockInstallPlayerResponseHook(void) {
             OpusLockDiagSet(@"resp.hook", @"no instalado");
         }
         // Ayuda a la app a elegir audio de alta calidad (respeta el switch).
-        int before = gBoolHookCount;
-        OpusLockForceBoolGetter(@[@"YTMSettings", @"YTMSettingsImpl"],
-                                @"allowAudioOnlyManualQualitySelection");
-        OpusLockDiagSet(@"bool.hooks",
-                        [NSString stringWithFormat:@"%d/2", gBoolHookCount - before]);
-        OpusLockDiscoverHAM();
+        if (OpusLockHookOn(@"hook.boolSettings", YES)) {
+            int before = gBoolHookCount;
+            OpusLockForceBoolGetter(@[@"YTMSettings", @"YTMSettingsImpl"],
+                                    @"allowAudioOnlyManualQualitySelection");
+            OpusLockDiagSet(@"bool.hooks",
+                            [NSString stringWithFormat:@"%d/2", gBoolHookCount - before]);
+        } else {
+            OpusLockDiagSet(@"bool.hooks", @"off por ajuste");
+        }
     } @catch (__unused NSException *e) { }
 }

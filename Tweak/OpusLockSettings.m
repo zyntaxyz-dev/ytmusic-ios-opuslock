@@ -12,6 +12,7 @@
 #import "OpusLock.h"
 #import "OpusLockPolicy.h"
 #import "OpusLockDiag.h"
+#import "OpusLockPlayerResponse.h"
 #import <objc/runtime.h>
 
 // ---------------------------------------------------------------------------
@@ -39,6 +40,7 @@
     t.dataSource = self;
     [self.view addSubview:t];
     self.tableView = t;
+    OpusLockDiscoverHAM(); // lazy, fuera del constructor
 }
 
 - (void)viewWillAppear:(BOOL)animated {
@@ -57,15 +59,23 @@
                           withRowAnimation:UITableViewRowAnimationNone];
 }
 
+- (void)hookSwitchChanged:(UISwitch *)sw {
+    NSString *key = sw.accessibilityIdentifier;
+    if (key) {
+        [[NSUserDefaults standardUserDefaults] setBool:sw.isOn forKey:key];
+    }
+}
+
 #pragma mark - Tabla
 
 - (NSInteger)numberOfSectionsInTableView:(UITableView *)tableView {
     (void)tableView;
-    return 3;
+    return 4;
 }
 
 - (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
     if (section == 2) return (NSInteger)OpusLockDiagRows().count;
+    if (section == 3) return (NSInteger)OpusLockHookDefs().count;
     return 2;
 }
 
@@ -73,7 +83,14 @@
     (void)tableView;
     if (section == 0) return @"OPUSLOCK";
     if (section == 1) return @"STREAM";
-    return @"DIAGNÓSTICO";
+    if (section == 2) return @"DIAGNÓSTICO";
+    return @"HOOKS";
+}
+
+- (NSString *)tableView:(UITableView *)tableView titleForFooterInSection:(NSInteger)section {
+    (void)tableView;
+    if (section == 3) return @"Los hooks aplican al reiniciar la app. Reordenar aplica al instante.";
+    return nil;
 }
 
 static NSString *OpusLockLastStreamText(void) {
@@ -114,18 +131,32 @@ static NSString *OpusLockLastStreamText(void) {
                action:@selector(qualitySwitchChanged:)
      forControlEvents:UIControlEventValueChanged];
         cell.accessoryView = sw;
-    } else if (indexPath.row == 0) {
+    } else if (indexPath.section == 1 && indexPath.row == 0) {
         cell.textLabel.text = @"Último stream";
         cell.detailTextLabel.text = OpusLockLastStreamText();
     } else if (indexPath.section == 1) {
         cell.textLabel.text = @"Cadena de fallback";
         cell.detailTextLabel.text = @"774 › 141 › 251 › 140 › …";
-    } else {
+    } else if (indexPath.section == 2) {
         NSArray<NSArray<NSString *> *> *rows = OpusLockDiagRows();
         NSArray<NSString *> *r = rows[(NSUInteger)indexPath.row % rows.count];
         cell.textLabel.text = r[0];
         cell.detailTextLabel.text = r[1];
         cell.detailTextLabel.numberOfLines = 0;
+    } else {
+        NSArray<NSDictionary<NSString *, NSString *> *> *defs = OpusLockHookDefs();
+        NSDictionary<NSString *, NSString *> *d =
+            defs[(NSUInteger)indexPath.row % defs.count];
+        cell.textLabel.text = d[@"title"];
+        cell.detailTextLabel.text = d[@"detail"];
+        UISwitch *sw = [[UISwitch alloc] init];
+        sw.accessibilityIdentifier = d[@"key"];
+        BOOL dflt = ![d[@"key"] isEqualToString:@"hook.reorder"]; // reorder OFF
+        sw.on = OpusLockHookOn(d[@"key"], dflt);
+        [sw addTarget:self
+               action:@selector(hookSwitchChanged:)
+     forControlEvents:UIControlEventValueChanged];
+        cell.accessoryView = sw;
     }
     return cell;
 }
@@ -219,14 +250,15 @@ void OpusLockInstallAccountMenuHook(void) {
             OpusLockDiagSet(@"menu.hook", @"firma distinta");
             return;
         }
-        gOrigMenu = (OpusLockMenuIMP)method_getImplementation(m);
-        const char *types = method_getTypeEncoding(m);
-        if (class_addMethod(menuCls, sel, (IMP)OpusLock_setAccountMenu, types)) {
-            gOrigMenu = (OpusLockMenuIMP)method_getImplementation(
-                class_getInstanceMethod(menuCls, sel));
-            } else {
-                method_setImplementation(m, (IMP)OpusLock_setAccountMenu);
+        gOrigMenu = NULL;
+        {
+            IMP o = NULL;
+            if (!OpusLockSwizzleDirect(menuCls, sel, (IMP)OpusLock_setAccountMenu, &o)) {
+                OpusLockDiagSet(@"menu.hook", @"heredado: no tocado");
+                return;
             }
+            gOrigMenu = (OpusLockMenuIMP)o;
             OpusLockDiagSet(@"menu.hook", @"instalado");
+        }
     } @catch (__unused NSException *e) { }
 }

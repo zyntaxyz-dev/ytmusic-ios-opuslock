@@ -108,6 +108,55 @@ void OpusLockRecordPlayback(NSInteger itag, NSDictionary * _Nullable info) {
 }
 
 // ---------------------------------------------------------------------------
+// Hooks con interruptor + swizzle seguro
+// ---------------------------------------------------------------------------
+
+NSArray<NSDictionary<NSString *, NSString *> *> *OpusLockHookDefs(void) {
+    return @[
+        @{@"key": @"hook.playerResponse",
+          @"title": @"Player response",
+          @"detail": @"YTIPlayerResponse.streamingData (pill)"},
+        @{@"key": @"hook.reorder",
+          @"title": @"Reordenar adaptiveFormats",
+          @"detail": @"774 primero (exp, inmediato)"},
+        @{@"key": @"hook.boolSettings",
+          @"title": @"Ajustes calidad YTM",
+          @"detail": @"allowAudioOnlyManualQualitySelection"},
+        @{@"key": @"hook.av",
+          @"title": @"AVPlayer + red",
+          @"detail": @"Núcleo v1.0 (respaldo)"},
+    ];
+}
+
+BOOL OpusLockHookOn(NSString *key, BOOL dflt) {
+    @try {
+        id v = [[NSUserDefaults standardUserDefaults] objectForKey:key];
+        return v ? [v boolValue] : dflt;
+    } @catch (__unused NSException *e) {
+        return dflt;
+    }
+}
+
+BOOL OpusLockSwizzleDirect(Class cls, SEL sel, IMP newIMP, IMP *outOrig) {
+    @try {
+        if (cls == Nil || sel == NULL || newIMP == NULL) return NO;
+        unsigned int n = 0;
+        Method *list = class_copyMethodList(cls, &n);
+        Method found = NULL;
+        for (unsigned int i = 0; i < n; i++) {
+            if (method_getName(list[i]) == sel) { found = list[i]; break; }
+        }
+        free(list);
+        if (!found) return NO; // heredado o inexistente: no tocar
+        if (outOrig) *outOrig = method_getImplementation(found);
+        method_setImplementation(found, newIMP);
+        return YES;
+    } @catch (__unused NSException *e) {
+        return NO;
+    }
+}
+
+// ---------------------------------------------------------------------------
 // 1. Prefs best-effort
 // ---------------------------------------------------------------------------
 
@@ -273,21 +322,14 @@ static void OpusLock_replaceCurrentItem(id self, SEL _cmd, AVPlayerItem *item) {
     });
 }
 
-static void OpusLockSwizzle(Class cls, SEL orig, IMP repl, const char *types, void **saveOrig) {
+static void OpusLockSwizzle(Class cls, SEL orig, IMP repl, void **saveOrig) {
     @try {
         if (!cls) return;
-        Method m = class_getInstanceMethod(cls, orig);
-        if (!m) {
-            OPUSLOCK_LOG(@"sin método %@ en %@", NSStringFromSelector(orig), cls);
-            return;
-        }
-        if (saveOrig) *saveOrig = (void *)method_getImplementation(m);
-        // addMethod protege contra swizzles heredados.
-        if (class_addMethod(cls, orig, repl, types)) {
-            Method added = class_getInstanceMethod(cls, orig);
-            if (saveOrig) *saveOrig = (void *)method_getImplementation(added);
+        IMP o = NULL;
+        if (OpusLockSwizzleDirect(cls, orig, repl, &o)) {
+            if (saveOrig) *saveOrig = o;
         } else {
-            method_setImplementation(m, repl);
+            OPUSLOCK_LOG(@"sin swizzle %@ en %@", NSStringFromSelector(orig), cls);
         }
     } @catch (__unused NSException *e) { }
 }
@@ -301,18 +343,18 @@ static void OpusLockInit(void) {
     @autoreleasepool {
         @try {
             OpusLockForcePrefs();
-            Class session = NSClassFromString(@"NSURLSession");
-            if (!session) session = [NSURLSession class];
-            OpusLockSwizzle(session,
-                            @selector(dataTaskWithRequest:completionHandler:),
-                            (IMP)OpusLock_dataTaskWithRequest,
-                            "@@:@?",
-                            (void **)&gOrigDataTask);
-            OpusLockSwizzle([AVPlayer class],
-                            @selector(replaceCurrentItemWithPlayerItem:),
-                            (IMP)OpusLock_replaceCurrentItem,
-                            "v@:@",
-                            (void **)&gOrigReplace);
+            if (OpusLockHookOn(@"hook.av", YES)) {
+                Class session = NSClassFromString(@"NSURLSession");
+                if (!session) session = [NSURLSession class];
+                OpusLockSwizzle(session,
+                                @selector(dataTaskWithRequest:completionHandler:),
+                                (IMP)OpusLock_dataTaskWithRequest,
+                                (void **)&gOrigDataTask);
+                OpusLockSwizzle([AVPlayer class],
+                                @selector(replaceCurrentItemWithPlayerItem:),
+                                (IMP)OpusLock_replaceCurrentItem,
+                                (void **)&gOrigReplace);
+            }
             OpusLockInstallAccountMenuHook(); // botón "OpusLock" en menú cuenta
             OpusLockInstallPlayerResponseHook(); // reorder + pill vía YTIPlayerResponse
             OPUSLOCK_LOG(@"init v%@", OpusLockVersion);
