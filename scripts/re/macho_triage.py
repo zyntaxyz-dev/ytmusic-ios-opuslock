@@ -31,6 +31,11 @@ PATTERNS = [
     r"YTMAccountButton",
     r"YTMAvatarAccountView",
     r"setAccountMenuUpperButtons",
+    r"YTIPlayerResponse",
+    r"ytm_isAudioOnlyPlayable",
+    r"allowAudioOnlyManualQualitySelection",
+    r"YTMSettings",
+    r"adaptiveFormatsArray",
 ]
 
 CHUNK = 8 * 1024 * 1024

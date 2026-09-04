@@ -11,6 +11,7 @@
 #import "OpusLockSettings.h"
 #import "OpusLock.h"
 #import "OpusLockPolicy.h"
+#import "OpusLockDiag.h"
 #import <objc/runtime.h>
 
 // ---------------------------------------------------------------------------
@@ -60,17 +61,19 @@
 
 - (NSInteger)numberOfSectionsInTableView:(UITableView *)tableView {
     (void)tableView;
-    return 2;
+    return 3;
 }
 
 - (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
-    (void)tableView;
+    if (section == 2) return (NSInteger)OpusLockDiagRows().count;
     return 2;
 }
 
 - (NSString *)tableView:(UITableView *)tableView titleForHeaderInSection:(NSInteger)section {
     (void)tableView;
-    return section == 0 ? @"OPUSLOCK" : @"STREAM";
+    if (section == 0) return @"OPUSLOCK";
+    if (section == 1) return @"STREAM";
+    return @"DIAGNÓSTICO";
 }
 
 static NSString *OpusLockLastStreamText(void) {
@@ -114,9 +117,15 @@ static NSString *OpusLockLastStreamText(void) {
     } else if (indexPath.row == 0) {
         cell.textLabel.text = @"Último stream";
         cell.detailTextLabel.text = OpusLockLastStreamText();
-    } else {
+    } else if (indexPath.section == 1) {
         cell.textLabel.text = @"Cadena de fallback";
         cell.detailTextLabel.text = @"774 › 141 › 251 › 140 › …";
+    } else {
+        NSArray<NSArray<NSString *> *> *rows = OpusLockDiagRows();
+        NSArray<NSString *> *r = rows[(NSUInteger)indexPath.row % rows.count];
+        cell.textLabel.text = r[0];
+        cell.detailTextLabel.text = r[1];
+        cell.detailTextLabel.numberOfLines = 0;
     }
     return cell;
 }
@@ -196,18 +205,28 @@ void OpusLockInstallAccountMenuHook(void) {
     @try {
         Class menuCls = NSClassFromString(@"YTMAvatarAccountView");
         SEL sel = NSSelectorFromString(@"setAccountMenuUpperButtons:lowerButtons:");
-        if (menuCls == Nil) return;
+        if (menuCls == Nil) {
+            OpusLockDiagSet(@"menu.hook", @"sin clase");
+            return;
+        }
         Method m = class_getInstanceMethod(menuCls, sel);
-        if (!m) return;
+        if (!m) {
+            OpusLockDiagSet(@"menu.hook", @"sin selector");
+            return;
+        }
         // Firma esperada: self, _cmd, upper, lower (4 args totales).
-        if (method_getNumberOfArguments(m) != 4) return;
+        if (method_getNumberOfArguments(m) != 4) {
+            OpusLockDiagSet(@"menu.hook", @"firma distinta");
+            return;
+        }
         gOrigMenu = (OpusLockMenuIMP)method_getImplementation(m);
         const char *types = method_getTypeEncoding(m);
         if (class_addMethod(menuCls, sel, (IMP)OpusLock_setAccountMenu, types)) {
             gOrigMenu = (OpusLockMenuIMP)method_getImplementation(
                 class_getInstanceMethod(menuCls, sel));
-        } else {
-            method_setImplementation(m, (IMP)OpusLock_setAccountMenu);
-        }
+            } else {
+                method_setImplementation(m, (IMP)OpusLock_setAccountMenu);
+            }
+            OpusLockDiagSet(@"menu.hook", @"instalado");
     } @catch (__unused NSException *e) { }
 }

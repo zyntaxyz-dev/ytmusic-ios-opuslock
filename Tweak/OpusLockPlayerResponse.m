@@ -20,14 +20,34 @@
 #import "OpusLock.h"
 #import "OpusLockPolicy.h"
 #import "OpusLockOverlay.h"
+#import "OpusLockDiag.h"
 #import <objc/runtime.h>
 #import <objc/message.h>
+#import <string.h>
 
 // ---------------------------------------------------------------------------
 // Utilidades runtime
 // ---------------------------------------------------------------------------
 
-/// Primer getter (0 args, retorna objeto) cuyo nombre contiene `substr`.
+/// Getter por probe directo: `class_getInstanceMethod` dispara
+/// `+resolveInstanceMethod:`, así que encuentra accessors GPB `@dynamic`
+/// que la enumeración de métodos NO lista. Devuelve NULL si no existe.
+static Method OpusLockProbeGetter(Class cls, NSArray<NSString *> *names) {
+    @try {
+        for (NSString *n in names) {
+            SEL s = NSSelectorFromString(n);
+            Method m = class_getInstanceMethod(cls, s);
+            if (m && method_getNumberOfArguments(m) == 2) {
+                char ret[8] = {0};
+                method_getReturnType(m, ret, sizeof(ret));
+                if (ret[0] == '@') return m;
+            }
+        }
+    } @catch (__unused NSException *e) { }
+    return NULL;
+}
+
+/// Fallback: barrido de la tabla de métodos (solo métodos reales compilados).
 static SEL OpusLockFindObjectGetter(Class cls, NSString *substr) {
     @try {
         NSString *want = substr.lowercaseString;
@@ -89,8 +109,16 @@ static NSString * _Nullable OpusLockStringOfElement(id el, NSString *selName) {
 
 static NSArray * _Nullable OpusLockAdaptiveArray(id sd) {
     @try {
-        SEL arr = OpusLockFindObjectGetter(object_getClass(sd), @"adaptiveformats");
-        if (arr == NULL) return nil;
+        // 1) Probe directo (resuelve @dynamic). 2) Barrido como fallback.
+        Method m = OpusLockProbeGetter(object_getClass(sd),
+                                       @[@"adaptiveFormatsArray", @"adaptiveFormats"]);
+        SEL arr = m ? method_getName(m)
+                    : OpusLockFindObjectGetter(object_getClass(sd), @"adaptiveformats");
+        if (arr == NULL) {
+            OpusLockDiagSet(@"sd.array", @"NO hallado");
+            return nil;
+        }
+        OpusLockDiagSet(@"sd.array", NSStringFromSelector(arr));
         OpusLockObjectFn f = (OpusLockObjectFn)objc_msgSend;
         id v = f(sd, arr);
         return [v isKindOfClass:[NSArray class]] ? v : nil;
@@ -104,6 +132,7 @@ static void OpusLockReorderStreamingData(id sd) {
         if (!OpusLockIsEnabled()) return; // switch OFF: no tocar
         NSArray *arr = OpusLockAdaptiveArray(sd);
         if (!arr || arr.count < 2) return;
+        OpusLockDiagCount(@"sd.arrays");
         NSArray *ranked = [arr sortedArrayUsingComparator:^NSComparisonResult(id a, id b) {
             NSUInteger ra = [OpusLockPolicy rankForItag:OpusLockItagOfElement(a)];
             NSUInteger rb = [OpusLockPolicy rankForItag:OpusLockItagOfElement(b)];
@@ -130,6 +159,7 @@ static void OpusLockRecordFromStreamingData(id sd) {
     @try {
         NSArray *arr = OpusLockAdaptiveArray(sd);
         if (!arr || arr.count == 0) return;
+        OpusLockDiagCount(@"sd.arrays");
         NSURL *bestURL = nil;
         NSDictionary *bestInfo = nil;
         NSInteger bestItag = -1;
@@ -140,6 +170,7 @@ static void OpusLockRecordFromStreamingData(id sd) {
                                     options:NSCaseInsensitiveSearch].location == NSNotFound) {
                 continue; // solo audio
             }
+            OpusLockDiagCount(@"sd.audio");
             NSString *urlStr = OpusLockStringOfElement(el, @"url");
             if (!urlStr) urlStr = OpusLockStringOfElement(el, @"URL");
             if (!urlStr) continue;
@@ -157,6 +188,7 @@ static void OpusLockRecordFromStreamingData(id sd) {
         }
         if (bestItag >= 0) {
             (void)bestURL;
+            OpusLockDiagCount(@"sd.recorded");
             OpusLockRecordPlayback(bestItag, bestInfo);
             [[OpusLockOverlay shared] showWithInfo:bestInfo itag:bestItag];
         }
@@ -178,6 +210,7 @@ static id OpusLock_streamingData(id self, SEL _cmd) {
         return nil;
     }
     @try {
+        OpusLockDiagCount(@"resp.calls");
         if (sd) {
             OpusLockReorderStreamingData(sd);
             OpusLockRecordFromStreamingData(sd);
@@ -237,16 +270,72 @@ static void OpusLockForceBoolGetter(NSArray<NSString *> *classNames, NSString *s
 }
 
 // ---------------------------------------------------------------------------
+// Discovery HAM* (vía backup): inventario una sola vez para Diagnóstico.
+// ---------------------------------------------------------------------------
+
+static void OpusLockDiscoverHAM(void) {
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        @try {
+            unsigned int ncls = 0;
+            Class *classes = objc_copyClassList(&ncls);
+            if (!classes) {
+                OpusLockDiagSet(@"ham.classes", @"0");
+                return;
+            }
+            NSArray<NSString *> *wants = @[@"format", @"stream", @"track",
+                                           @"response", @"quality", @"audio"];
+            NSMutableArray<NSString *> *ham = [NSMutableArray array];
+            NSMutableArray<NSString *> *samples = [NSMutableArray array];
+            for (unsigned int i = 0; i < ncls; i++) {
+                const char *cname = class_getName(classes[i]);
+                if (!cname || strncmp(cname, "HAM", 3) != 0) continue;
+                [ham addObject:[NSString stringWithUTF8String:cname]];
+                if (samples.count >= 3) continue;
+                unsigned int nm = 0;
+                Method *methods = class_copyMethodList(classes[i], &nm);
+                int perClass = 0;
+                for (unsigned int j = 0; j < nm && perClass < 2; j++) {
+                    NSString *sname =
+                        NSStringFromSelector(method_getName(methods[j])).lowercaseString;
+                    for (NSString *w in wants) {
+                        if ([sname containsString:w]) {
+                            [samples addObject:[NSString stringWithFormat:
+                                @"%s.%@", cname, NSStringFromSelector(method_getName(methods[j]))]];
+                            perClass++;
+                            break;
+                        }
+                    }
+                    if (samples.count >= 3) break;
+                }
+                free(methods);
+            }
+            free(classes);
+            OpusLockDiagSet(@"ham.classes",
+                            [NSString stringWithFormat:@"%lu", (unsigned long)ham.count]);
+            OpusLockDiagSet(@"ham.sample", samples.count > 0
+                            ? [samples componentsJoinedByString:@" | "] : @"sin candidatos");
+        } @catch (__unused NSException *e) { }
+    });
+}
+
+// ---------------------------------------------------------------------------
 // Entry
 // ---------------------------------------------------------------------------
 
 void OpusLockInstallPlayerResponseHook(void) {
     @try {
         Class resp = NSClassFromString(@"YTIPlayerResponse");
+        OpusLockDiagSet(@"resp.class", resp != Nil ? @"SÍ hallada" : @"NO hallada");
         if (resp != Nil) {
-            SEL getter = OpusLockFindObjectGetter(resp, @"streamingdata");
+            // Probe directo primero (resuelve @dynamic GPB); barrido fallback.
+            Method m = OpusLockProbeGetter(resp, @[@"streamingData"]);
+            SEL getter = m ? method_getName(m)
+                           : OpusLockFindObjectGetter(resp, @"streamingdata");
+            OpusLockDiagSet(@"resp.getter",
+                            getter != NULL ? NSStringFromSelector(getter) : @"NO hallado");
             if (getter != NULL) {
-                Method m = class_getInstanceMethod(resp, getter);
+                m = class_getInstanceMethod(resp, getter);
                 if (m) {
                     gOrigSd = (OpusLockSdIMP)method_getImplementation(m);
                     const char *types = method_getTypeEncoding(m);
@@ -256,11 +345,23 @@ void OpusLockInstallPlayerResponseHook(void) {
                     } else {
                         method_setImplementation(m, (IMP)OpusLock_streamingData);
                     }
+                    OpusLockDiagSet(@"resp.hook", @"instalado");
+                } else {
+                    OpusLockDiagSet(@"resp.hook", @"sin método");
                 }
+            } else {
+                OpusLockDiagSet(@"resp.hook", @"no instalado");
             }
+        } else {
+            OpusLockDiagSet(@"resp.getter", @"—");
+            OpusLockDiagSet(@"resp.hook", @"no instalado");
         }
         // Ayuda a la app a elegir audio de alta calidad (respeta el switch).
+        int before = gBoolHookCount;
         OpusLockForceBoolGetter(@[@"YTMSettings", @"YTMSettingsImpl"],
                                 @"allowAudioOnlyManualQualitySelection");
+        OpusLockDiagSet(@"bool.hooks",
+                        [NSString stringWithFormat:@"%d/2", gBoolHookCount - before]);
+        OpusLockDiscoverHAM();
     } @catch (__unused NSException *e) { }
 }
